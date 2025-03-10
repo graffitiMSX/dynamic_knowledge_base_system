@@ -196,3 +196,147 @@ describe('TopicController - findPath', () => {
     expect(jsonMock).toHaveBeenCalledWith({ error: 'Database error' });
   });
 });
+
+describe('TopicController - getAll', () => {
+  let controller: TopicController;
+  let mockTopicService: jest.Mocked<TopicService>;
+  let mockRequest: Partial<Request>;
+  let mockResponse: Partial<Response>;
+  let jsonSpy: jest.Mock;
+  let statusSpy: jest.Mock;
+
+  beforeEach(() => {
+    // Setup mock service
+    mockTopicService = {
+      findAll: jest.fn(),
+      count: jest.fn(),
+    } as unknown as jest.Mocked<TopicService>;
+
+    // Setup mock response
+    jsonSpy = jest.fn();
+    statusSpy = jest.fn().mockReturnThis();
+    mockResponse = {
+      json: jsonSpy,
+      status: statusSpy,
+    };
+
+    // Initialize controller
+    controller = new TopicController(mockTopicService);
+  });
+
+  it('should return paginated topics with default values', async () => {
+    // Setup
+    const mockTopics = [
+      new Topic('Topic 1', 'Content 1'),
+      new Topic('Topic 2', 'Content 2')
+    ];
+    const totalCount = 15;
+    
+    mockRequest = { query: {} };
+    mockTopicService.findAll.mockResolvedValue(mockTopics);
+    mockTopicService.count.mockResolvedValue(totalCount);
+
+    // Execute
+    await controller.getAll(mockRequest as Request, mockResponse as Response);
+
+    // Verify
+    expect(mockTopicService.findAll).toHaveBeenCalledWith(0, 10);
+    expect(mockTopicService.count).toHaveBeenCalled();
+    expect(jsonSpy).toHaveBeenCalledWith({
+      items: mockTopics,
+      page: 1,
+      limit: 10,
+      total: totalCount,
+      totalPages: 2
+    });
+  });
+
+  it('should handle custom pagination parameters', async () => {
+    // Setup
+    const mockTopics = [new Topic('Topic 3', 'Content 3')];
+    const totalCount = 30;
+    
+    mockRequest = { 
+      query: { 
+        page: '3',
+        limit: '5'
+      } 
+    };
+    mockTopicService.findAll.mockResolvedValue(mockTopics);
+    mockTopicService.count.mockResolvedValue(totalCount);
+
+    // Execute
+    await controller.getAll(mockRequest as Request, mockResponse as Response);
+
+    // Verify
+    expect(mockTopicService.findAll).toHaveBeenCalledWith(10, 5);
+    expect(jsonSpy).toHaveBeenCalledWith({
+      items: mockTopics,
+      page: 3,
+      limit: 5,
+      total: totalCount,
+      totalPages: 6
+    });
+  });
+
+  it('should handle invalid pagination parameters', async () => {
+    // Setup
+    const mockTopics: Topic[] = [];
+    const totalCount = 0;
+    
+    mockRequest = { 
+      query: { 
+        page: 'invalid',
+        limit: 'invalid'
+      } 
+    };
+    mockTopicService.findAll.mockResolvedValue(mockTopics);
+    mockTopicService.count.mockResolvedValue(totalCount);
+
+    // Execute
+    await controller.getAll(mockRequest as Request, mockResponse as Response);
+
+    // Verify
+    expect(mockTopicService.findAll).toHaveBeenCalledWith(0, 10);
+    expect(jsonSpy).toHaveBeenCalledWith({
+      items: mockTopics,
+      page: 1,
+      limit: 10,
+      total: totalCount,
+      totalPages: 0
+    });
+  });
+
+  it('should handle service errors', async () => {
+    // Setup
+    const errorMessage = 'Database error';
+    mockRequest = { query: {} };
+    mockTopicService.findAll.mockRejectedValue(new Error(errorMessage));
+
+    // Execute
+    await controller.getAll(mockRequest as Request, mockResponse as Response);
+
+    // Verify
+    expect(statusSpy).toHaveBeenCalledWith(400);
+    expect(jsonSpy).toHaveBeenCalledWith({ error: errorMessage });
+  });
+
+  it('should handle zero total results', async () => {
+    // Setup
+    mockRequest = { query: {} };
+    mockTopicService.findAll.mockResolvedValue([]);
+    mockTopicService.count.mockResolvedValue(0);
+
+    // Execute
+    await controller.getAll(mockRequest as Request, mockResponse as Response);
+
+    // Verify
+    expect(jsonSpy).toHaveBeenCalledWith({
+      items: [],
+      page: 1,
+      limit: 10,
+      total: 0,
+      totalPages: 0
+    });
+  });
+});
